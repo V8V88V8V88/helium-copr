@@ -1,0 +1,124 @@
+name: Helium RPM Build
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"    # every 6 hours
+  workflow_dispatch:           # manual trigger
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPO: imputnet/helium-linux
+  SPEC_FILE: SPECS/helium.spec
+  COPR_PROJECT: v8v88v8v88/helium
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            git gh rpm-build rpmdevtools \
+            copr-cli desktop-file-utils \
+            gtk3-devel libX11-devel libdrm-devel mesa-libGL-devel \
+            jq sed
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect latest upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest_tag=$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.tag_name')
+          latest_version="${latest_tag#v}"
+          echo "version=${latest_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "Upstream latest: ${latest_version}"
+
+      - name: Read current spec version
+        id: current
+        run: |
+          spec_version=$(grep -m1 '^Version:' "$SPEC_FILE" | awk '{print $2}')
+          echo "version=${spec_version}" >> "$GITHUB_OUTPUT"
+          echo "Spec currently at: ${spec_version}"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.version }}" = "${{ steps.current.outputs.version }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New version available: ${{ steps.upstream.outputs.version }}"
+          fi
+
+      - name: Update spec file
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          new_ver="${{ steps.upstream.outputs.version }}"
+          old_ver="${{ steps.current.outputs.version }}"
+          date_str=$(date +"%a %b %d %Y")
+
+          sed -i "s/^Version:.*/Version:        ${new_ver}/" "$SPEC_FILE"
+
+          changelog_entry="* ${date_str} Vaibhav <v8v88v8v88@fedora> - ${new_ver}-1\n- Update to ${new_ver}"
+          sed -i "/%changelog/a\\${changelog_entry}" "$SPEC_FILE"
+
+          echo "Updated spec: ${old_ver} -> ${new_ver}"
+          grep -E '^Version:|^%changelog' -A2 "$SPEC_FILE"
+
+      - name: Download source tarball
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          new_ver="${{ steps.upstream.outputs.version }}"
+          tarball="helium-${new_ver}-x86_64_linux.tar.xz"
+          download_url=$(gh api "repos/${UPSTREAM_REPO}/releases/latest" \
+            --jq ".assets[] | select(.name == \"${tarball}\") | .browser_download_url")
+
+          if [ -z "$download_url" ]; then
+            echo "::error::Asset ${tarball} not found in release ${{ steps.upstream.outputs.tag }}"
+            exit 1
+          fi
+
+          curl -L -o "SOURCES/${tarball}" "$download_url"
+          echo "Downloaded: ${tarball} ($(du -h "SOURCES/${tarball}" | cut -f1))"
+
+      - name: Build RPM
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          rpmbuild --define "_topdir $(pwd)" -ba "$SPEC_FILE"
+          echo "--- Built packages ---"
+          find RPMS SRPMS -name '*.rpm' -print
+
+      - name: Upload to COPR
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          mkdir -p ~/.config
+          echo "$COPR_CONFIG" > ~/.config/copr
+          srpm=$(find SRPMS -name '*.src.rpm' | head -1)
+          echo "Submitting to COPR: ${srpm}"
+          copr-cli build "$COPR_PROJECT" "$srpm"
+
+      - name: Commit spec update
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$SPEC_FILE"
+          git commit -m "Update helium to ${{ steps.upstream.outputs.version }}"
+          git push

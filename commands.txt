@@ -1,0 +1,5 @@
+#for manual updating
+cd ~/rpmbuild/SPECS
+rpmbuild -ba helium.spec
+
+copr-cli build v8v88v8v88/helium ~/rpmbuild/SRPMS/helium-0.6.9.1-1.fc43.src.rpm

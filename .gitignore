@@ -1,0 +1,23 @@
+# rpmbuild directories
+BUILD/
+BUILDROOT/
+RPMS/
+SRPMS/
+
+# Source tarballs (downloaded at build time)
+SOURCES/*.tar.xz
+SOURCES/*.tar.gz
+SOURCES/*.tar.bz2
+SOURCES/*.zip
+
+# RPM artifacts
+*.rpm
+*.src.rpm
+
+# Editor / OS junk
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+

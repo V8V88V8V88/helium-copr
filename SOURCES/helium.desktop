@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Helium Browser
+Exec=/usr/bin/helium
+Icon=helium
+Type=Application
+Categories=Network;WebBrowser;
+StartupNotify=true
+Comment=Private, fast, and honest web browser
