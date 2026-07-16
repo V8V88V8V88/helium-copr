@@ -1,5 +1,5 @@
 Name:           helium
-Version:        0.14.5.1
+Version:        0.14.6.1
 Release:        1%{?dist}
 Summary:        Helium Browser - Privacy-focused Chromium fork
 
@@ -92,6 +92,8 @@ fi
 /usr/bin/update-desktop-database &> /dev/null || :
 
 %changelog
+* Thu Jul 16 2026 Vaibhav <v8v88v8v88@fedora> - 0.14.6.1-1
+- Update to 0.14.6.1
 * Fri Jul 10 2026 Vaibhav <v8v88v8v88@fedora> - 0.14.5.1-1
 - Update to 0.14.5.1
 * Wed Jul 08 2026 Vaibhav <v8v88v8v88@fedora> - 0.14.4.1-1
